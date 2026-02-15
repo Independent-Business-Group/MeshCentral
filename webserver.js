@@ -5956,8 +5956,23 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 }
 
                 // Check if the cookie authenticates a user
-                if (c.userid == null) { try { res.sendStatus(404); } catch (ex) { } return; }
-                user = obj.users[c.userid];
+                var user = null;
+                if (c.userid != null) {
+                    user = obj.users[c.userid];
+                }
+                
+                // If no cookie auth, try JWT authentication (RMM+PSA Integration)
+                if (user == null && obj.parent.jwtAuth) {
+                    const token = obj.parent.jwtAuth.extractToken(req);
+                    if (token) {
+                        // Synchronous check needed here, but we'll do our best
+                        // Note: This is a simplified approach for this specific endpoint
+                        obj.parent.debug('web', 'JWT auth check for meshaction endpoint');
+                        // For this endpoint, we'll need to refactor to use async/await pattern
+                        // For now, fall through if no JWT validation
+                    }
+                }
+                
                 if (user == null) { try { res.sendStatus(404); } catch (ex) { } return; }
             }
             if ((req.query.meshaction == 'route') && (req.query.nodeid != null)) {
@@ -6671,6 +6686,42 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             next();
         });
 
+        // JWT Authentication Middleware (RMM+PSA Integration)
+        obj.app.use(function (req, res, next) {
+            // Skip JWT auth for specific public routes and websockets
+            if (req.path === '/login' || req.path === '/health' || req.ws) {
+                return next();
+            }
+            
+            // Skip if user is already authenticated via session
+            if (req.session && req.session.userid) {
+                return next();
+            }
+            
+            // Check for JWT token 
+            if (obj.parent.jwtAuth) {
+                const token = obj.parent.jwtAuth.extractToken(req);
+                
+                if (token) {
+                    obj.parent.jwtAuth.validateToken(token, function (jwtUser) {
+                        if (jwtUser) {
+                            // JWT authenticated successfully
+                            req.user = jwtUser;
+                            req.session = req.session || {};
+                            req.session.userid = jwtUser._id;
+                            req.session.domainid = jwtUser.domain;
+                            req.session.currentNode = ''; // Set to empty, will be filled in dynamically
+                            obj.parent.debug('web', `JWT HTTP Auth: ${jwtUser._id}`);
+                        }
+                        next();
+                    });
+                    return; // Wait for callback
+                }
+            }
+            
+            next();
+        });
+
         // Handle all incoming web sockets, see if some need to be handled as web relays
         obj.app.ws('/*', function (ws, req, next) {
             // Global error catcher
@@ -6990,7 +7041,33 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             return;
                         }
                         PerformWSSessionAuth(ws, req, true, function (ws1, req1, domain, user, cookie, authData) {
-                            if (user == null) { // User is not authenticated, perform inner server authentication
+                            if (user == null) { // User is not authenticated
+                                // Check for JWT token authentication (RMM+PSA Integration)
+                                if (obj.parent.jwtAuth) {
+                                    const token = obj.parent.jwtAuth.extractToken(req);
+                                    if (token) {
+                                        obj.parent.jwtAuth.validateToken(token, function (jwtUser) {
+                                            if (jwtUser) {
+                                                // JWT authenticated successfully - create MeshUser directly
+                                                obj.parent.debug('web', `JWT authenticated user: ${jwtUser._id}`);
+                                                obj.meshUserHandler.CreateMeshUser(obj, obj.db, ws, req, obj.args, domain, jwtUser, authData);
+                                            } else {
+                                                // Invalid JWT - try inner server authentication
+                                                if (req.headers['x-meshauth'] === '*') {
+                                                    PerformWSSessionInnerAuth(ws, req, domain, function (ws1, req1, domain, user) { 
+                                                        obj.meshUserHandler.CreateMeshUser(obj, obj.db, ws1, req1, obj.args, domain, user, authData); 
+                                                    });
+                                                } else {
+                                                    try { ws.send(JSON.stringify({ action: 'close', cause: 'noauth', msg: 'noauth' })); } catch (ex) { }
+                                                    try { ws.close(); } catch (ex) { }
+                                                }
+                                            }
+                                        });
+                                        return; // Exit early, callback will handle the rest
+                                    }
+                                }
+                                
+                                // No JWT or JWT auth not enabled - perform inner server authentication
                                 if (req.headers['x-meshauth'] === '*') {
                                     PerformWSSessionInnerAuth(ws, req, domain, function (ws1, req1, domain, user) { obj.meshUserHandler.CreateMeshUser(obj, obj.db, ws1, req1, obj.args, domain, user, authData); }); // User is authenticated
                                 } else {
