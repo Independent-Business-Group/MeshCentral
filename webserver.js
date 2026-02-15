@@ -3006,6 +3006,33 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             delete req.session.currentNode;
             req.session.ip = req.clientIp; // Bind this session to the IP address of the request
             setSessionRandom(req);
+        } else if (req.query.token && obj.parent.jwtAuth) {
+            // JWT token authentication (RMM+PSA Integration)
+            var jwtToken = req.query.token;
+            obj.parent.jwtAuth.validateToken(jwtToken, function (jwtUser) {
+                if (jwtUser) {
+                    // JWT authenticated successfully - create session
+                    parent.debug('web', 'handleRootRequestEx: JWT auth ok for ' + jwtUser._id);
+                    delete req.session.loginmode;
+                    req.session.userid = jwtUser._id;
+                    delete req.session.currentNode;
+                    req.session.ip = req.clientIp; // Bind this session to the IP address of the request
+                    setSessionRandom(req);
+                    
+                    // Store user in memory if not already present
+                    if (!obj.users[jwtUser._id]) {
+                        obj.users[jwtUser._id] = jwtUser;
+                    }
+                    
+                    // Continue with authenticated request
+                    handleRootRequestExAuthenticated(req, res, domain, direct);
+                } else {
+                    // JWT validation failed
+                    parent.debug('web', 'handleRootRequestEx: JWT auth failed');
+                    handleRootRequestExAuthenticated(req, res, domain, direct);
+                }
+            });
+            return; // Exit here since validateToken is async
         } else if (req.query.login && (obj.parent.loginCookieEncryptionKey != null)) {
             var loginCookie = obj.parent.decodeCookie(req.query.login, obj.parent.loginCookieEncryptionKey, 60); // 60 minute timeout
             //if ((loginCookie != null) && (loginCookie.ip != null) && !checkCookieIp(loginCookie.ip, req.clientIp)) { loginCookie = null; } // If the cookie is bound to an IP address, check here.
