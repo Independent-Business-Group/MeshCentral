@@ -1925,6 +1925,16 @@ function CreateMeshCentralServer(config, args) {
                     // Create MQTT Broker to hook into webserver and mpsserver
                     if ((typeof obj.config.settings.mqtt == 'object') && (typeof obj.config.settings.mqtt.auth == 'object') && (typeof obj.config.settings.mqtt.auth.keyid == 'string') && (typeof obj.config.settings.mqtt.auth.key == 'string')) { obj.mqttbroker = require("./mqttbroker.js").CreateMQTTBroker(obj, obj.db, obj.args); }
 
+                    // Initialize JWT Authentication Module (RMM+PSA Integration)
+                    if (obj.config.settings && obj.config.settings.jwtAuth === true) {
+                        try {
+                            obj.jwtAuth = require('./jwt-auth.js').CreateJWTAuth(obj);
+                            console.log('✅ JWT Authentication enabled with PostgreSQL backend');
+                        } catch (ex) {
+                            console.log('❌ Failed to initialize JWT Authentication:', ex.message);
+                        }
+                    }
+
                     // Start the web server and if needed, the redirection web server.
                     obj.webserver = require('./webserver.js').CreateWebServer(obj, obj.db, obj.args, obj.certificates, obj.StartEx5);
                     if (obj.redirserver != null) { obj.redirserver.hookMainWebServer(obj.certificates); }
