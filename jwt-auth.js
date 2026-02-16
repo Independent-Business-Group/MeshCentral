@@ -108,14 +108,22 @@ module.exports.CreateJWTAuth = function (parent) {
      * Returns MeshCentral-formatted user object
      */
     obj.validateToken = function (token, callback) {
+        console.log('[JWT Auth] validateToken called with token:', token ? token.substring(0, 30) + '...' : 'null');
+        
         obj.verifyToken(token, (err, decoded) => {
-            if (err || !decoded) return callback(null);
+            if (err || !decoded) {
+                console.log('[JWT Auth] Token verification failed:', err ? err.message : 'no decoded payload');
+                return callback(null);
+            }
+            
+            console.log('[JWT Auth] Token decoded successfully:', { email: decoded.email, tenantId: decoded.tenant_id || decoded.tenantId, userId: decoded.user_id });
             
             // Check cache first
             const cacheKey = `${decoded.email || decoded.user_id}_${decoded.tenant_id || decoded.tenantId}`;
             const cached = obj.userCache.get(cacheKey);
             if (cached && (Date.now() - cached.timestamp < obj.cacheTimeout)) {
                 parent.debug('jwt-auth', `Cache hit for user: ${cacheKey}`);
+                console.log('[JWT Auth] Cache hit for user:', cacheKey);
                 return callback(cached.user);
             }
             
@@ -125,16 +133,22 @@ module.exports.CreateJWTAuth = function (parent) {
             
             if (!email || !tenantId) {
                 parent.debug('jwt-auth', 'Invalid token payload - missing email or tenant_id');
+                console.log('[JWT Auth] Invalid token payload - missing email or tenant_id');
                 return callback(null);
             }
             
+            console.log('[JWT Auth] Looking up user in database:', email, 'tenant:', tenantId);
+            
             obj.getUserByEmail(email, tenantId, (meshUser) => {
                 if (meshUser) {
+                    console.log('[JWT Auth] User found and mapped:', meshUser._id);
                     // Cache the result
                     obj.userCache.set(cacheKey, {
                         user: meshUser,
                         timestamp: Date.now()
                     });
+                } else {
+                    console.log('[JWT Auth] User not found in database');
                 }
                 callback(meshUser);
             });
@@ -181,11 +195,12 @@ module.exports.CreateJWTAuth = function (parent) {
             }
             
             // Map PostgreSQL user to MeshCentral user format
+            // Use empty domain string "" for default domain
             const meshUser = {
-                _id: `user/${tenantId}/${pgUser.user_id}`,
+                _id: `user//${email}`,  // MeshCentral format: user/{domain}/{username}
                 email: pgUser.email,
                 name: pgUser.name || pgUser.email.split('@')[0],
-                domain: tenantId,
+                domain: "",  // Default domain (empty string)
                 siteadmin: siteadmin,
                 emailVerified: true, // Assume emails are verified in your system
                 creation: Math.floor(new Date(pgUser.created_at).getTime() / 1000),
@@ -197,6 +212,7 @@ module.exports.CreateJWTAuth = function (parent) {
             };
             
             parent.debug('jwt-auth', `Mapped user: ${meshUser._id} (${meshUser.email}) siteadmin=${siteadmin}`);
+            console.log(`[JWT Auth] User mapped: ${meshUser._id}, siteadmin=${siteadmin}`);
             
             // Fetch device links for this user's tenant
             obj.getUserDeviceLinks(pgUser.user_id, tenantId, (links) => {
