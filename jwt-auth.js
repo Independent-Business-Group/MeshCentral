@@ -18,13 +18,33 @@ module.exports.CreateJWTAuth = function (parent) {
     obj.agentSignKey = process.env.AGENT_SIGN_KEY;
     
     // PostgreSQL connection pool
+    const dbHost = process.env.POSTGRES_HOST || process.env.DB_HOST;
+    const dbPort = parseInt(process.env.POSTGRES_PORT || process.env.DB_PORT || '25060');
+    const dbName = process.env.POSTGRES_DB || process.env.DB_NAME || 'defaultdb';
+    const dbUser = process.env.POSTGRES_USER || process.env.DB_USER || 'doadmin';
+    const dbPassword = process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD;
+    
+    console.log('[JWT Auth] Database config:', {
+        host: dbHost ? dbHost.substring(0, 20) + '...' : 'NOT SET',
+        port: dbPort,
+        database: dbName,
+        user: dbUser,
+        passwordSet: !!dbPassword
+    });
+    
+    if (!dbHost || !dbPassword) {
+        console.error('❌ JWT Auth: Missing required database environment variables');
+        console.error('Required: POSTGRES_HOST/DB_HOST and POSTGRES_PASSWORD/DB_PASSWORD');
+        throw new Error('Missing database configuration');
+    }
+    
     obj.pool = new Pool({
-        host: process.env.POSTGRES_HOST || process.env.DB_HOST,
-        port: parseInt(process.env.POSTGRES_PORT || process.env.DB_PORT || '25060'),
-        database: process.env.POSTGRES_DB || process.env.DB_NAME || 'defaultdb',
-        user: process.env.POSTGRES_USER || process.env.DB_USER || 'doadmin',
-        password: process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD,
-        ssl: process.env.POSTGRES_SSL === 'true' ? { rejectUnauthorized: false } : false,
+        host: dbHost,
+        port: dbPort,
+        database: dbName,
+        user: dbUser,
+        password: dbPassword,
+        ssl: { rejectUnauthorized: false },
         connectionTimeoutMillis: 5000,
         idleTimeoutMillis: 30000,
         max: 10
