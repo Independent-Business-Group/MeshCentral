@@ -116,10 +116,20 @@ module.exports.CreateJWTAuth = function (parent) {
                 return callback(null);
             }
             
-            console.log('[JWT Auth] Token decoded successfully:', { email: decoded.email, tenantId: decoded.tenant_id || decoded.tenantId, userId: decoded.user_id });
+            console.log('[JWT Auth] Token decoded successfully:', JSON.stringify(decoded, null, 2));
+            
+            // Extract user identifier - could be email, user_id, or userId
+            const email = decoded.email;
+            const userId = decoded.user_id || decoded.userId;
+            const tenantId = decoded.tenant_id || decoded.tenantId;
+            
+            if ((!email && !userId) || !tenantId) {
+                console.log('[JWT Auth] Invalid token payload - missing user identifier or tenant_id', { email, userId, tenantId });
+                return callback(null);
+            }
             
             // Check cache first
-            const cacheKey = `${decoded.email || decoded.user_id}_${decoded.tenant_id || decoded.tenantId}`;
+            const cacheKey = `${email || userId}_${tenantId}`;
             const cached = obj.userCache.get(cacheKey);
             if (cached && (Date.now() - cached.timestamp < obj.cacheTimeout)) {
                 parent.debug('jwt-auth', `Cache hit for user: ${cacheKey}`);
@@ -127,19 +137,13 @@ module.exports.CreateJWTAuth = function (parent) {
                 return callback(cached.user);
             }
             
-            // Fetch from database
-            const email = decoded.email;
-            const tenantId = decoded.tenant_id || decoded.tenantId;
+            // Fetch from database - prefer email lookup, fall back to user_id
+            console.log('[JWT Auth] Looking up user in database:', { email, userId, tenantId });
             
-            if (!email || !tenantId) {
-                parent.debug('jwt-auth', 'Invalid token payload - missing email or tenant_id');
-                console.log('[JWT Auth] Invalid token payload - missing email or tenant_id');
-                return callback(null);
-            }
+            const lookupFunction = email ? obj.getUserByEmail : obj.getUserById;
+            const lookupValue = email || userId;
             
-            console.log('[JWT Auth] Looking up user in database:', email, 'tenant:', tenantId);
-            
-            obj.getUserByEmail(email, tenantId, (meshUser) => {
+            lookupFunction.call(obj, lookupValue, tenantId, (meshUser) => {
                 if (meshUser) {
                     console.log('[JWT Auth] User found and mapped:', meshUser._id);
                     // Cache the result
@@ -223,6 +227,81 @@ module.exports.CreateJWTAuth = function (parent) {
         } catch (err) {
             parent.debug('jwt-auth', 'PostgreSQL query error:', err.message);
             console.error('❌ JWT Auth: Database query failed:', err.message);
+            callback(null);
+        }
+    };
+    
+    /**
+     * Fetch user by user_id from PostgreSQL and map to MeshCentral user format
+     */
+    obj.getUserById = async function (userId, tenantId, callback) {
+        try {
+            console.log('[JWT Auth] getUserById:', { userId, tenantId });
+            
+            const result = await obj.pool.query(
+                `SELECT 
+                    user_id, 
+                    email, 
+                    name, 
+                    role, 
+                    tenant_id,
+                    created_at,
+                    mfa_enabled
+                FROM users 
+                WHERE user_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+                [userId, tenantId]
+            );
+            
+            if (result.rows.length === 0) {
+                parent.debug('jwt-auth', `User not found: ID ${userId} in tenant ${tenantId}`);
+                console.log(`[JWT Auth] User not found: ID ${userId} in tenant ${tenantId}`);
+                return callback(null);
+            }
+            
+            const pgUser = result.rows[0];
+            console.log('[JWT Auth] Found user in database:', { userId: pgUser.user_id, email: pgUser.email, name: pgUser.name, role: pgUser.role });
+            
+            // Determine site admin privileges
+            let siteadmin = 0;
+            if (pgUser.role === 'admin') {
+                // Check if root tenant
+                if (tenantId === '1' || tenantId === '00000000-0000-0000-0000-000000000001') {
+                    siteadmin = 0xFFFFFFFF; // Full admin
+                } else {
+                    siteadmin = 0x00000006; // Manage users + server update
+                }
+            }
+            
+            // Map PostgreSQL user to MeshCentral user format
+            // Use empty domain string "" for default domain
+            const email = pgUser.email || `user${pgUser.user_id}@local`;
+            const meshUser = {
+                _id: `user//${email}`,  // MeshCentral format: user/{domain}/{username}
+                email: email,
+                name: pgUser.name || email.split('@')[0],
+                domain: "",  // Default domain (empty string)
+                siteadmin: siteadmin,
+                emailVerified: true,
+                creation: Math.floor(new Date(pgUser.created_at).getTime() / 1000),
+                links: {},
+                // Custom fields for RMM+PSA integration
+                _external: true,
+                _postgres_user_id: pgUser.user_id,
+                _tenant_id: tenantId
+            };
+            
+            parent.debug('jwt-auth', `Mapped user by ID: ${meshUser._id} (${meshUser.email}) siteadmin=${siteadmin}`);
+            console.log(`[JWT Auth] User mapped by ID: ${meshUser._id}, siteadmin=${siteadmin}`);
+            
+            // Fetch device links for this user's tenant
+            obj.getUserDeviceLinks(pgUser.user_id, tenantId, (links) => {
+                meshUser.links = links;
+                callback(meshUser);
+            });
+            
+        } catch (err) {
+            parent.debug('jwt-auth', 'PostgreSQL query error (getUserById):', err.message);
+            console.error('❌ JWT Auth: Database query failed (getUserById):', err.message);
             callback(null);
         }
     };
