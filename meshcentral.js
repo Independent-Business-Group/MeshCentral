@@ -1926,31 +1926,40 @@ function CreateMeshCentralServer(config, args) {
                     if ((typeof obj.config.settings.mqtt == 'object') && (typeof obj.config.settings.mqtt.auth == 'object') && (typeof obj.config.settings.mqtt.auth.keyid == 'string') && (typeof obj.config.settings.mqtt.auth.key == 'string')) { obj.mqttbroker = require("./mqttbroker.js").CreateMQTTBroker(obj, obj.db, obj.args); }
 
                     // Initialize JWT Authentication Module (RMM+PSA Integration)
-                    console.log('[MeshCentral] ===== JWT AUTH CHECK =====');
-                    console.log('[MeshCentral] obj.config.settings exists:', !!obj.config.settings);
-                    console.log('[MeshCentral] jwtAuth value:', obj.config.settings ? obj.config.settings.jwtAuth : 'N/A');
-                    console.log('[MeshCentral] jwtAuth type:', obj.config.settings ? typeof obj.config.settings.jwtAuth : 'N/A');
-                    console.log('[MeshCentral] jwtAuth === true:', obj.config.settings && obj.config.settings.jwtAuth === true);
+                    const fs = require('fs');
+                    const jwtDebugLog = (msg) => {
+                        console.log('[JWT-DEBUG] ' + msg);
+                        try {
+                            fs.appendFileSync('/tmp/jwt-debug.log', new Date().toISOString() + ' ' + msg + '\n');
+                        } catch (e) {}
+                    };
+                    
+                    jwtDebugLog('===== JWT AUTH CHECK =====');
+                    jwtDebugLog('obj.config.settings exists: ' + !!obj.config.settings);
+                    jwtDebugLog('jwtAuth value: ' + (obj.config.settings ? obj.config.settings.jwtAuth : 'N/A'));
+                    jwtDebugLog('jwtAuth type: ' + (obj.config.settings ? typeof obj.config.settings.jwtAuth : 'N/A'));
+                    jwtDebugLog('jwtAuth === true: ' + (obj.config.settings && obj.config.settings.jwtAuth === true));
                     
                     if (obj.config.settings && obj.config.settings.jwtAuth === true) {
-                        console.log('[MeshCentral] Attempting to load JWT auth module...');
+                        jwtDebugLog('Attempting to load JWT auth module...');
                         try {
-                            console.log('[MeshCentral] Requiring jwt-auth.js...');
+                            jwtDebugLog('Requiring jwt-auth.js...');
                             obj.jwtAuth = require('./jwt-auth.js').CreateJWTAuth(obj);
-                            console.log('[MeshCentral] JWT module created successfully');
+                            jwtDebugLog('JWT module created successfully');
                             if (obj.jwtAuth && typeof obj.jwtAuth.init === 'function') {
-                                console.log('[MeshCentral] Calling jwt init()...');
+                                jwtDebugLog('Calling jwt init()...');
                                 obj.jwtAuth.init();
-                                console.log('[MeshCentral] JWT init() complete');
+                                jwtDebugLog('JWT init() complete');
                             }
                             console.log('✅ JWT Authentication enabled with PostgreSQL backend');
                         } catch (ex) {
+                            jwtDebugLog('Failed to initialize JWT: ' + ex.message);
                             console.log('❌ Failed to initialize JWT Authentication:', ex.message);
                             console.error('JWT Auth Error Details:', ex);
                             console.error('Stack:', ex.stack);
                         }
                     } else {
-                        console.log('[MeshCentral] JWT auth NOT enabled - condition failed');
+                        jwtDebugLog('JWT auth NOT enabled - condition failed');
                     }
 
                     // Start the web server and if needed, the redirection web server.
