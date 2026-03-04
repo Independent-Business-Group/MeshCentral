@@ -7151,6 +7151,103 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         });
                     });
                 }
+                
+                // ========================================================================
+                // CUSTOM CANVAS DESKTOP ENDPOINT (RMM+PSA Integration)
+                // ========================================================================
+                // Optimized WebSocket endpoint for canvas-based remote desktop viewer
+                // Direct connection from React frontend to MeshCentral with JWT auth
+                obj.app.ws(url + 'api/canvas-desktop/:nodeId', function (ws, req) {
+                    const nodeId = req.params.nodeId;
+                    parent.debug('web', `[CANVAS] New canvas desktop connection request for node: ${nodeId}`);
+                    console.log('[CANVAS] New canvas desktop connection request for node:', nodeId);
+                    
+                    // Extract JWT token from query parameter or Authorization header
+                    const token = req.query.token || (req.headers.authorization ? req.headers.authorization.split(' ')[1] : null);
+                    
+                    if (!token) {
+                        console.error('[CANVAS] No JWT token provided');
+                        ws.send(JSON.stringify({ type: 'error', message: 'No authentication token provided' }));
+                        ws.close();
+                        return;
+                    }
+                    
+                    // Validate JWT token using existing JWT auth module
+                    if (!obj.parent.jwtAuth) {
+                        console.error('[CANVAS] JWT auth module not available');
+                        ws.send(JSON.stringify({ type: 'error', message: 'Authentication not configured' }));
+                        ws.close();
+                        return;
+                    }
+                    
+                    obj.parent.jwtAuth.validateToken(token, function (meshUser) {
+                        if (!meshUser) {
+                            console.error('[CANVAS] Invalid JWT token or user not found');
+                            ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
+                            ws.close();
+                            return;
+                        }
+                        
+                        const userId = meshUser._id;
+                        const tenantId = meshUser.tenant_id || meshUser.tenantId;
+                        
+                        parent.debug('web', `[CANVAS] JWT valid - User: ${userId}, Tenant: ${tenantId}, Node: ${nodeId}`);
+                        console.log(`[CANVAS] JWT valid - User: ${userId}, Tenant: ${tenantId}, Node: ${nodeId}`);
+                        
+                        // TODO Phase 2: Check tenant access to node via database query
+                        // For now, log the connection and send success message
+                        
+                        // Setup message handler
+                        ws.on('message', function(msg) {
+                            try {
+                                const data = JSON.parse(msg);
+                                parent.debug('web', `[CANVAS] Received: ${data.type}`);
+                                
+                                // Handle ping/pong for connection testing Phase 1
+                                if (data.type === 'ping') {
+                                    ws.send(JSON.stringify({ 
+                                        type: 'pong', 
+                                        timestamp: Date.now(),
+                                        server: 'meshcentral'
+                                    }));
+                                }
+                                
+                                // TODO Phase 2: Handle mouse/keyboard events
+                                // TODO Phase 2: Forward to agent desktop stream
+                                
+                            } catch (err) {
+                                console.error('[CANVAS] Message parse error:', err.message);
+                            }
+                        });
+                        
+                        ws.on('close', function() {
+                            parent.debug('web', `[CANVAS] Connection closed for node: ${nodeId}`);
+                            console.log(`[CANVAS] Connection closed for node: ${nodeId}`);
+                            // TODO Phase 2: Cleanup agent connection
+                        });
+                        
+                        ws.on('error', function(err) {
+                            console.error('[CANVAS] WebSocket error:', err.message);
+                        });
+                        
+                        // Send connection success message
+                        ws.send(JSON.stringify({ 
+                            type: 'connected', 
+                            nodeId: nodeId,
+                            userId: userId,
+                            tenantId: tenantId,
+                            message: 'Canvas desktop endpoint connected (Phase 1 - Testing)',
+                            phase: 1,
+                            capabilities: ['ping', 'auth']
+                            // Phase 2 will add: ['screen', 'input', 'quality']
+                        }));
+                        
+                        console.log(`[CANVAS] Connection established for user ${userId} to node ${nodeId}`);
+                    });
+                });
+                // End of Custom Canvas Desktop Endpoint
+                // ========================================================================
+                
                 obj.app.get(url + 'invite', handleInviteRequest);
                 obj.app.post(url + 'invite', obj.bodyParser.urlencoded({ extended: false }), handleInviteRequest);
                 
