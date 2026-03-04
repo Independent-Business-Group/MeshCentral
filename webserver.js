@@ -7173,14 +7173,15 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     }
                     
                     // Validate JWT token using existing JWT auth module
-                    if (!obj.parent.jwtAuth) {
+                    if (!parent.jwtAuth) {
                         console.error('[CANVAS] JWT auth module not available');
+                        console.error('[CANVAS] parent.jwtAuth:', parent.jwtAuth);
                         ws.send(JSON.stringify({ type: 'error', message: 'Authentication not configured' }));
                         ws.close();
                         return;
                     }
                     
-                    obj.parent.jwtAuth.validateToken(token, function (meshUser) {
+                    parent.jwtAuth.validateToken(token, function (meshUser) {
                         if (!meshUser) {
                             console.error('[CANVAS] Invalid JWT token or user not found');
                             ws.send(JSON.stringify({ type: 'error', message: 'Authentication failed' }));
