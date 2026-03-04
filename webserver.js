@@ -7152,6 +7152,15 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     });
                 }
                 
+                // TEST ENDPOINT - Simple WebSocket test without auth
+                obj.app.ws(url + 'test-canvas', function (ws, req) {
+                    console.log('[TEST] Test canvas endpoint hit!');
+                    ws.send(JSON.stringify({ type: 'test', message: 'Test endpoint works!' }));
+                    ws.on('message', function(msg) {
+                        ws.send(JSON.stringify({ type: 'echo', data: msg.toString() }));
+                    });
+                });
+                
                 // ========================================================================
                 // CUSTOM CANVAS DESKTOP ENDPOINT (RMM+PSA Integration)
                 // ========================================================================
