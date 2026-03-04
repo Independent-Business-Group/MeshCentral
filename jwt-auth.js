@@ -13,6 +13,13 @@ module.exports.CreateJWTAuth = function (parent) {
     const jwt = require('jsonwebtoken');
     const { Pool } = require('pg');
     
+    // Log what environment variables we actually receive
+    console.log('[JWT Auth] Environment variables check:');
+    console.log('  JWT_SECRET:', process.env.JWT_SECRET ? `${process.env.JWT_SECRET.substring(0, 20)}...` : 'NOT SET');
+    console.log('  AGENT_SIGN_KEY:', process.env.AGENT_SIGN_KEY ? `${process.env.AGENT_SIGN_KEY.substring(0, 20)}...` : 'NOT SET');
+    console.log('  POSTGRES_HOST:', process.env.POSTGRES_HOST ? 'SET' : 'NOT SET');
+    console.log('  POSTGRES_PASSWORD:', process.env.POSTGRES_PASSWORD ? 'SET' : 'NOT SET');
+    
     // JWT configuration
     obj.jwtSecret = process.env.JWT_SECRET;
     obj.agentSignKey = process.env.AGENT_SIGN_KEY;

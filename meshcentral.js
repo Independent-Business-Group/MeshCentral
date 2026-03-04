@@ -1927,15 +1927,21 @@ function CreateMeshCentralServer(config, args) {
 
                     // Initialize JWT Authentication Module (RMM+PSA Integration)
                     if (obj.config.settings && obj.config.settings.jwtAuth === true) {
+                        console.log('[MeshCentral] Attempting to load JWT auth module...');
                         try {
+                            console.log('[MeshCentral] Requiring jwt-auth.js...');
                             obj.jwtAuth = require('./jwt-auth.js').CreateJWTAuth(obj);
+                            console.log('[MeshCentral] JWT module created successfully');
                             if (obj.jwtAuth && typeof obj.jwtAuth.init === 'function') {
+                                console.log('[MeshCentral] Calling jwt init()...');
                                 obj.jwtAuth.init();
+                                console.log('[MeshCentral] JWT init() complete');
                             }
                             console.log('✅ JWT Authentication enabled with PostgreSQL backend');
                         } catch (ex) {
                             console.log('❌ Failed to initialize JWT Authentication:', ex.message);
                             console.error('JWT Auth Error Details:', ex);
+                            console.error('Stack:', ex.stack);
                         }
                     }
 
