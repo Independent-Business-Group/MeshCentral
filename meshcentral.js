@@ -1926,6 +1926,12 @@ function CreateMeshCentralServer(config, args) {
                     if ((typeof obj.config.settings.mqtt == 'object') && (typeof obj.config.settings.mqtt.auth == 'object') && (typeof obj.config.settings.mqtt.auth.keyid == 'string') && (typeof obj.config.settings.mqtt.auth.key == 'string')) { obj.mqttbroker = require("./mqttbroker.js").CreateMQTTBroker(obj, obj.db, obj.args); }
 
                     // Initialize JWT Authentication Module (RMM+PSA Integration)
+                    console.log('[MeshCentral] ===== JWT AUTH CHECK =====');
+                    console.log('[MeshCentral] obj.config.settings exists:', !!obj.config.settings);
+                    console.log('[MeshCentral] jwtAuth value:', obj.config.settings ? obj.config.settings.jwtAuth : 'N/A');
+                    console.log('[MeshCentral] jwtAuth type:', obj.config.settings ? typeof obj.config.settings.jwtAuth : 'N/A');
+                    console.log('[MeshCentral] jwtAuth === true:', obj.config.settings && obj.config.settings.jwtAuth === true);
+                    
                     if (obj.config.settings && obj.config.settings.jwtAuth === true) {
                         console.log('[MeshCentral] Attempting to load JWT auth module...');
                         try {
@@ -1943,6 +1949,8 @@ function CreateMeshCentralServer(config, args) {
                             console.error('JWT Auth Error Details:', ex);
                             console.error('Stack:', ex.stack);
                         }
+                    } else {
+                        console.log('[MeshCentral] JWT auth NOT enabled - condition failed');
                     }
 
                     // Start the web server and if needed, the redirection web server.
