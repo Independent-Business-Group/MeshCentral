@@ -1929,9 +1929,13 @@ function CreateMeshCentralServer(config, args) {
                     if (obj.config.settings && obj.config.settings.jwtAuth === true) {
                         try {
                             obj.jwtAuth = require('./jwt-auth.js').CreateJWTAuth(obj);
+                            if (obj.jwtAuth && typeof obj.jwtAuth.init === 'function') {
+                                obj.jwtAuth.init();
+                            }
                             console.log('✅ JWT Authentication enabled with PostgreSQL backend');
                         } catch (ex) {
                             console.log('❌ Failed to initialize JWT Authentication:', ex.message);
+                            console.error('JWT Auth Error Details:', ex);
                         }
                     }
 
