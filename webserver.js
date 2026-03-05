@@ -7315,7 +7315,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                 console.log('[CANVAS] Removing peer from desktop multiplexor');
                                 if (peer.deskMultiplexor.removePeer(peer)) {
                                     // Last peer removed, cleanup multiplexor reference
-                                    delete obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                                    delete obj.desktoprelays[nodeId];
                                     console.log('[CANVAS] Desktop multiplexor cleaned up');
                                 }
                             }
@@ -7354,28 +7354,35 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         try {
                             console.log('[CANVAS] Accessing desktop relay handler...');
                             console.log('[CANVAS] obj.meshDesktopMultiplexHandler exists:', !!obj.meshDesktopMultiplexHandler);
+                            console.log('[CANVAS] obj.desktoprelays exists:', !!obj.desktoprelays);
                             
-                            if (!obj.meshDesktopMultiplexHandler || !obj.meshDesktopMultiplexHandler.parent) {
+                            if (!obj.meshDesktopMultiplexHandler) {
                                 console.error('[CANVAS] ERROR: Desktop multiplexor handler not available');
-                                ws.send(JSON.stringify({ type: 'error', message: 'Desktop multiplexor not available' }));
+                                ws.send(JSON.stringify({ type: 'error', message: 'Desktop multiplexor handler not loaded' }));
                                 return;
                             }
                             
-                            let deskMultiplexor = obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                            if (!obj.desktoprelays) {
+                                console.error('[CANVAS] ERROR: Desktop relays not initialized');
+                                ws.send(JSON.stringify({ type: 'error', message: 'Desktop relays not initialized' }));
+                                return;
+                            }
+                            
+                            let deskMultiplexor = obj.desktoprelays[nodeId];
                             console.log('[CANVAS] Existing multiplexor for node:', deskMultiplexor ? 'Found' : 'Not found');
                             
                             if (deskMultiplexor == null || deskMultiplexor == 1) {
                                 console.log('[CANVAS] Creating new desktop multiplexor for node:', nodeId);
                                 
                                 // Mark as pending creation
-                                obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = 1;
+                                obj.desktoprelays[nodeId] = 1;
                                 
                                 // Create new multiplexor
-                                const CreateDesktopMultiplexor = require('./meshdesktopmultiplex').CreateDesktopMultiplexor;
+                                const CreateDesktopMultiplexor = obj.meshDesktopMultiplexHandler.CreateDesktopMultiplexor;
                                 console.log('[CANVAS] CreateDesktopMultiplexor function loaded:', typeof CreateDesktopMultiplexor);
                                 
                                 CreateDesktopMultiplexor(
-                                    obj.meshDesktopMultiplexHandler.parent,
+                                    obj,  // Use webserver object as parent
                                     domain,
                                     nodeId,
                                     'canvas-' + Date.now(), // session id
@@ -7384,7 +7391,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                         if (multiplexor != null) {
                                             console.log('[CANVAS] Desktop multiplexor created successfully');
                                             peer.deskMultiplexor = multiplexor;
-                                            obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = multiplexor;
+                                            obj.desktoprelays[nodeId] = multiplexor;
                                             
                                             // Add ourselves as a viewer
                                             multiplexor.addPeer(peer);
@@ -7399,7 +7406,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                             ws.send(JSON.stringify({ type: 'ready', message: 'Desktop streaming active' }));
                                         } else {
                                             console.error('[CANVAS] Failed to create desktop multiplexor - callback returned null');
-                                            delete obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                                            delete obj.desktoprelays[nodeId];
                                             ws.send(JSON.stringify({ type: 'error', message: 'Failed to establish desktop session' }));
                                             ws.close();
                                         }
