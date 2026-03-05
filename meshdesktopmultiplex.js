@@ -967,6 +967,9 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
     return obj;
 }
 
+// Export CreateDesktopMultiplexor for use by canvas desktop endpoint
+module.exports.CreateDesktopMultiplexor = CreateDesktopMultiplexor;
+
 function checkDeviceSharePublicIdentifier(parent, domain, nodeid, pid, extraKey, func) {
     // Check the public id
     parent.db.GetAllTypeNodeFiltered([nodeid], domain.id, 'deviceshare', null, function (err, docs) {
