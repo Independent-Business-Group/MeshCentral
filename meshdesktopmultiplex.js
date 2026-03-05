@@ -98,8 +98,12 @@ function CreateDesktopMultiplexor(parent, domain, nodeid, id, func) {
     obj.userIds = [];                   // List of userid's that have intertracted with this session.
     //obj.autoLock = false;               // Automatically lock the remote device once disconnected
 
-    // Accounting
-    parent.trafficStats.desktopMultiplex.sessions++;
+    // Accounting - Initialize trafficStats.desktopMultiplex if it doesn't exist
+    if (parent.trafficStats.desktopMultiplex == null) { 
+        parent.trafficStats.desktopMultiplex = { connections: 0, sessions: 1, in: 0, out: 0 }; 
+    } else { 
+        parent.trafficStats.desktopMultiplex.sessions++; 
+    }
 
     // Add an agent or viewer
     obj.addPeer = function (peer) {
