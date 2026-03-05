@@ -7224,6 +7224,25 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         parent.debug('web', `[CANVAS] Phase 2 - JWT valid - User: ${userId}, Node: ${nodeId}`);
                         console.log(`[CANVAS] Phase 2 - Authenticated user ${userId} for node ${nodeId}`);
                         
+                        // CRITICAL: Resume socket immediately - Express-ws might pause it
+                        try {
+                            if (ws._socket && typeof ws._socket.resume === 'function') {
+                                console.log('[CANVAS] Resuming socket...');
+                                ws._socket.resume();
+                            }
+                        } catch (e) {
+                            console.error('[CANVAS] Error resuming socket:', e.message);
+                        }
+                        
+                        // Send immediate test message to verify WebSocket works
+                        try {
+                            console.log('[CANVAS] Sending immediate test message...');
+                            ws.send(JSON.stringify({ type: 'test', message: 'Immediate send test' }));
+                            console.log('[CANVAS] Test message sent');
+                        } catch (e) {
+                            console.error('[CANVAS] Error sending test message:', e.message);
+                        }
+                        
                         // Phase 2: Create peer object for desktop multiplexor integration
                         const peer = {
                             ws: ws,
