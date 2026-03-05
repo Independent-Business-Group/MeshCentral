@@ -1936,11 +1936,11 @@ function CreateMeshCentralServer(config, args) {
                     
                     jwtDebugLog('===== JWT AUTH CHECK =====');
                     jwtDebugLog('obj.config.settings exists: ' + !!obj.config.settings);
-                    jwtDebugLog('jwtAuth value: ' + (obj.config.settings ? obj.config.settings.jwtAuth : 'N/A'));
-                    jwtDebugLog('jwtAuth type: ' + (obj.config.settings ? typeof obj.config.settings.jwtAuth : 'N/A'));
-                    jwtDebugLog('jwtAuth === true: ' + (obj.config.settings && obj.config.settings.jwtAuth === true));
+                    jwtDebugLog('jwtauth value: ' + (obj.config.settings ? obj.config.settings.jwtauth : 'N/A'));
+                    jwtDebugLog('jwtauth type: ' + (obj.config.settings ? typeof obj.config.settings.jwtauth : 'N/A'));
+                    jwtDebugLog('jwtauth === true: ' + (obj.config.settings && obj.config.settings.jwtauth === true));
                     
-                    if (obj.config.settings && obj.config.settings.jwtAuth === true) {
+                    if (obj.config.settings && obj.config.settings.jwtauth === true) {
                         jwtDebugLog('Attempting to load JWT auth module...');
                         try {
                             jwtDebugLog('Requiring jwt-auth.js...');
