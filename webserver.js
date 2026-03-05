@@ -7306,71 +7306,109 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             console.error('[CANVAS] WebSocket error:', err.message);
                         });
                         
-                        // Send initial connection success message
-                        ws.send(JSON.stringify({ 
-                            type: 'connected', 
-                            nodeId: nodeId,
-                            userId: userId,
-                            tenantId: tenantId,
-                            message: 'Canvas desktop endpoint connected (Phase 2 - Screen Streaming)',
-                            phase: 2,
-                            capabilities: ['ping', 'auth', 'screen', 'input']
-                        }));
-                        
-                        console.log(`[CANVAS] Phase 2 - Initial handshake sent to dashboard`);
-                        
-                        // Phase 2: Connect to desktop multiplexor
-                        let deskMultiplexor = obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
-                        
-                        if (deskMultiplexor == null || deskMultiplexor == 1) {
-                            console.log('[CANVAS] Creating new desktop multiplexor for node:', nodeId);
+                        // Send initial connection success message  with error handling
+                        try {
+                            const connectedMsg = JSON.stringify({ 
+                                type: 'connected', 
+                                nodeId: nodeId,
+                                userId: userId,
+                                tenantId: tenantId,
+                                message: 'Canvas desktop endpoint connected (Phase 2 - Screen Streaming)',
+                                phase: 2,
+                                capabilities: ['ping', 'auth', 'screen', 'input']
+                            });
                             
-                            // Mark as pending creation
-                            obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = 1;
-                            
-                            // Create new multiplexor
-                            require('./meshdesktopmultiplex').CreateDesktopMultiplexor(
-                                obj.meshDesktopMultiplexHandler.parent,
-                                domain,
-                                nodeId,
-                                'canvas-' + Date.now(), // session id
-                                function (multiplexor) {
-                                    if (multiplexor != null) {
-                                        console.log('[CANVAS] Desktop multiplexor created successfully');
-                                        peer.deskMultiplexor = multiplexor;
-                                        obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = multiplexor;
-                                        
-                                        // Add ourselves as a viewer
-                                        multiplexor.addPeer(peer);
-                                        console.log('[CANVAS] Added as peer to desktop multiplexor');
-                                        
-                                        // Resume socket traffic
-                                        if (ws._socket && ws._socket.resume) {
-                                            ws._socket.resume();
-                                        }
-                                    } else {
-                                        console.error('[CANVAS] Failed to create desktop multiplexor');
-                                        delete obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
-                                        ws.send(JSON.stringify({ type: 'error', message: 'Failed to establish desktop session' }));
-                                        ws.close();
-                                    }
+                            ws.send(connectedMsg, function(err) {
+                                if (err) {
+                                    console.error('[CANVAS] Failed to send connected message:', err.message);
+                                } else {
+                                    console.log('[CANVAS] Connected message sent successfully');
                                 }
-                            );
-                        } else {
-                            console.log('[CANVAS] Using existing desktop multiplexor for node:', nodeId);
-                            peer.deskMultiplexor = deskMultiplexor;
+                            });
                             
-                            // Add ourselves as a viewer to existing multiplexor
-                            deskMultiplexor.addPeer(peer);
-                            console.log('[CANVAS] Added as peer to existing desktop multiplexor');
-                            
-                            // Resume socket traffic
-                            if (ws._socket && ws._socket.resume) {
-                                ws._socket.resume();
-                            }
+                            console.log(`[CANVAS] Phase 2 - Initial handshake queued for dashboard`);
+                        } catch (err) {
+                            console.error('[CANVAS] ERROR sending connected message:', err.message);
                         }
                         
-                        console.log(`[CANVAS] Phase 2 - Complete setup for user ${userId} to node ${nodeId}`);
+                        // Phase 2: Connect to desktop multiplexor
+                        try {
+                            console.log('[CANVAS] Accessing desktop relay handler...');
+                            console.log('[CANVAS] obj.meshDesktopMultiplexHandler exists:', !!obj.meshDesktopMultiplexHandler);
+                            
+                            if (!obj.meshDesktopMultiplexHandler || !obj.meshDesktopMultiplexHandler.parent) {
+                                console.error('[CANVAS] ERROR: Desktop multiplexor handler not available');
+                                ws.send(JSON.stringify({ type: 'error', message: 'Desktop multiplexor not available' }));
+                                return;
+                            }
+                            
+                            let deskMultiplexor = obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                            console.log('[CANVAS] Existing multiplexor for node:', deskMultiplexor ? 'Found' : 'Not found');
+                            
+                            if (deskMultiplexor == null || deskMultiplexor == 1) {
+                                console.log('[CANVAS] Creating new desktop multiplexor for node:', nodeId);
+                                
+                                // Mark as pending creation
+                                obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = 1;
+                                
+                                // Create new multiplexor
+                                const CreateDesktopMultiplexor = require('./meshdesktopmultiplex').CreateDesktopMultiplexor;
+                                console.log('[CANVAS] CreateDesktopMultiplexor function loaded:', typeof CreateDesktopMultiplexor);
+                                
+                                CreateDesktopMultiplexor(
+                                    obj.meshDesktopMultiplexHandler.parent,
+                                    domain,
+                                    nodeId,
+                                    'canvas-' + Date.now(), // session id
+                                    function (multiplexor) {
+                                        console.log('[CANVAS] Multiplexor creation callback called');
+                                        if (multiplexor != null) {
+                                            console.log('[CANVAS] Desktop multiplexor created successfully');
+                                            peer.deskMultiplexor = multiplexor;
+                                            obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = multiplexor;
+                                            
+                                            // Add ourselves as a viewer
+                                            multiplexor.addPeer(peer);
+                                            console.log('[CANVAS] Added as peer to desktop multiplexor');
+                                            
+                                            // Resume socket traffic
+                                            if (ws._socket && ws._socket.resume) {
+                                                ws._socket.resume();
+                                            }
+                                            
+                                            // Send ready message
+                                            ws.send(JSON.stringify({ type: 'ready', message: 'Desktop streaming active' }));
+                                        } else {
+                                            console.error('[CANVAS] Failed to create desktop multiplexor - callback returned null');
+                                            delete obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                                            ws.send(JSON.stringify({ type: 'error', message: 'Failed to establish desktop session' }));
+                                            ws.close();
+                                        }
+                                    }
+                                );
+                            } else {
+                                console.log('[CANVAS] Using existing desktop multiplexor for node:', nodeId);
+                                peer.deskMultiplexor = deskMultiplexor;
+                                
+                                // Add ourselves as a viewer to existing multiplexor
+                                deskMultiplexor.addPeer(peer);
+                                console.log('[CANVAS] Added as peer to existing desktop multiplexor');
+                                
+                                // Resume socket traffic
+                                if (ws._socket && ws._socket.resume) {
+                                    ws._socket.resume();
+                                }
+                                
+                                // Send ready message
+                                ws.send(JSON.stringify({ type: 'ready', message: 'Desktop streaming active' }));
+                            }
+                            
+                            console.log(`[CANVAS] Phase 2 - Complete setup for user ${userId} to node ${nodeId}`);
+                        } catch (err) {
+                            console.error('[CANVAS] ERROR in Phase 2 setup:', err.message);
+                            console.error('[CANVAS] Stack:', err.stack);
+                            ws.send(JSON.stringify({ type: 'error', message: 'Internal server error: ' + err.message }));
+                        }
                     } // end handleAuthenticatedConnection
                 });
                 // End of Custom Canvas Desktop Endpoint
