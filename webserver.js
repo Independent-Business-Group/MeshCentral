@@ -7204,6 +7204,9 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     
                     // TEMPORARY: Simple bypass for testing until JWT module fixed
                     // TODO: Remove this and restore full JWT validation once module initializes
+                    console.log('[CANVAS] DEBUG: process.env.CANVAS_TEST_MODE =', process.env.CANVAS_TEST_MODE);
+                    console.log('[CANVAS] DEBUG: typeof =', typeof process.env.CANVAS_TEST_MODE);
+                    console.log('[CANVAS] DEBUG: === "true" ?', process.env.CANVAS_TEST_MODE === 'true');
                     const TEMP_TEST_MODE = process.env.CANVAS_TEST_MODE === 'true';
                     
                     if (TEMP_TEST_MODE) {
