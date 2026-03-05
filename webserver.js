@@ -7172,14 +7172,35 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     console.log('[CANVAS] Phase 2 - New canvas desktop connection request for node:', nodeId);
                     
                     // Extract JWT token from query parameter or Authorization header
-                    const token = req.query.token || (req.headers.authorization ? req.headers.authorization.split(' ')[1] : null);
+                    // Parse query string manually for WebSocket connections
+                    let token = req.query ? req.query.token : null;
+                    
+                    if (!token && req.url) {
+                        const urlParts = req.url.split('?');
+                        if (urlParts.length > 1) {
+                            const queryString = urlParts[1];
+                            const params = new URLSearchParams(queryString);
+                            token = params.get('token');
+                            console.log('[CANVAS] Extracted token from URL query string');
+                        }
+                    }
+                    
+                    if (!token && req.headers.authorization) {
+                        token = req.headers.authorization.split(' ')[1];
+                        console.log('[CANVAS] Extracted token from Authorization header');
+                    }
                     
                     if (!token) {
                         console.error('[CANVAS] No JWT token provided');
+                        console.error('[CANVAS] req.query:', req.query);
+                        console.error('[CANVAS] req.url:', req.url);
+                        console.error('[CANVAS] req.headers.authorization:', req.headers.authorization);
                         ws.send(JSON.stringify({ type: 'error', message: 'No authentication token provided' }));
                         ws.close();
                         return;
                     }
+                    
+                    console.log('[CANVAS] Token received:', token.substring(0, 20) + '...');
                     
                     // TEMPORARY: Simple bypass for testing until JWT module fixed
                     // TODO: Remove this and restore full JWT validation once module initializes
