@@ -7169,7 +7169,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 obj.app.ws(url + 'api/canvas-desktop/:nodeId', function (ws, req) {
                     const nodeId = req.params.nodeId;
                     parent.debug('web', `[CANVAS] New canvas desktop connection request for node: ${nodeId}`);
-                    console.log('[CANVAS] New canvas desktop connection request for node:', nodeId);
+                    console.log('[CANVAS] Phase 2 - New canvas desktop connection request for node:', nodeId);
                     
                     // Extract JWT token from query parameter or Authorization header
                     const token = req.query.token || (req.headers.authorization ? req.headers.authorization.split(' ')[1] : null);
@@ -7200,8 +7200,6 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     // Validate JWT token using existing JWT auth module
                     if (!obj.parent.jwtAuth) {
                         console.error('[CANVAS] JWT auth module not available');
-                        console.error('[CANVAS] obj.parent.jwtAuth:', obj.parent.jwtAuth);
-                        console.error('[CANVAS] This should not happen - JWT module failed to initialize');
                         ws.send(JSON.stringify({ type: 'error', message: 'Authentication not configured' }));
                         ws.close();
                         return;
@@ -7223,19 +7221,44 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         const userId = meshUser._id;
                         const tenantId = meshUser.tenant_id || meshUser.tenantId;
                         
-                        parent.debug('web', `[CANVAS] JWT valid - User: ${userId}, Tenant: ${tenantId}, Node: ${nodeId}`);
-                        console.log(`[CANVAS] JWT valid - User: ${userId}, Tenant: ${tenantId}, Node: ${nodeId}`);
+                        parent.debug('web', `[CANVAS] Phase 2 - JWT valid - User: ${userId}, Node: ${nodeId}`);
+                        console.log(`[CANVAS] Phase 2 - Authenticated user ${userId} for node ${nodeId}`);
                         
-                        // TODO Phase 2: Check tenant access to node via database query
-                        // For now, log the connection and send success message
+                        // Phase 2: Create peer object for desktop multiplexor integration
+                        const peer = {
+                            ws: ws,
+                            req: req,
+                            user: meshUser,
+                            nodeid: nodeId,
+                            meshid: null, // Will be set when we get node info
+                            // Mark this as browser viewer so the multiplexor routes screen data to us
+                            // The multiplexor checks peer.req.query.browser to identify viewers
+                            ...req
+                        };
                         
-                        // Setup message handler
+                        // Mark as browser viewer (required by desktop multiplexor)
+                        if (!peer.req.query) peer.req.query = {};
+                        peer.req.query.browser = true;
+                        
+                        // Store reference
+                        ws.canvasPeer = peer;
+                        
+                        // Phase 2: Setup message handler for input events from dashboard
                         ws.on('message', function(msg) {
                             try {
-                                const data = JSON.parse(msg);
-                                parent.debug('web', `[CANVAS] Received: ${data.type}`);
+                                // Handle binary data (input events to agent)
+                                if (Buffer.isBuffer(msg)) {
+                                    if (peer.deskMultiplexor && peer.deskMultiplexor.processData) {
+                                        peer.deskMultiplexor.processData(peer, msg);
+                                    }
+                                    return;
+                                }
                                 
-                                // Handle ping/pong for connection testing Phase 1
+                                // Handle JSON control messages
+                                const data = JSON.parse(msg);
+                                parent.debug('web', `[CANVAS] Control message: ${data.type}`);
+                                
+                                // Handle ping/pong for connection testing
                                 if (data.type === 'ping') {
                                     ws.send(JSON.stringify({ 
                                         type: 'pong', 
@@ -7244,8 +7267,20 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                                     }));
                                 }
                                 
-                                // TODO Phase 2: Handle mouse/keyboard events
-                                // TODO Phase 2: Forward to agent desktop stream
+                                // Handle quality/framerate adjustments
+                                if (data.type === 'quality' && data.value) {
+                                    if (peer.imageCompression) {
+                                        peer.imageCompression = Math.max(10, Math.min(100, data.value));
+                                        console.log(`[CANVAS] Quality adjusted to ${peer.imageCompression}`);
+                                    }
+                                }
+                                
+                                if (data.type === 'framerate' && data.value) {
+                                    if (peer.imageFrameRate) {
+                                        peer.imageFrameRate = Math.max(10, Math.min(60, data.value));
+                                        console.log(`[CANVAS] Framerate adjusted to ${peer.imageFrameRate}`);
+                                    }
+                                }
                                 
                             } catch (err) {
                                 console.error('[CANVAS] Message parse error:', err.message);
@@ -7254,27 +7289,88 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                         
                         ws.on('close', function() {
                             parent.debug('web', `[CANVAS] Connection closed for node: ${nodeId}`);
-                            console.log(`[CANVAS] Connection closed for node: ${nodeId}`);
-                            // TODO Phase 2: Cleanup agent connection
+                            console.log(`[CANVAS] Phase 2 - Connection closed for node: ${nodeId}`);
+                            
+                            // Phase 2: Remove from desktop multiplexor
+                            if (peer.deskMultiplexor && peer.deskMultiplexor.removePeer) {
+                                console.log('[CANVAS] Removing peer from desktop multiplexor');
+                                if (peer.deskMultiplexor.removePeer(peer)) {
+                                    // Last peer removed, cleanup multiplexor reference
+                                    delete obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                                    console.log('[CANVAS] Desktop multiplexor cleaned up');
+                                }
+                            }
                         });
                         
                         ws.on('error', function(err) {
                             console.error('[CANVAS] WebSocket error:', err.message);
                         });
                         
-                        // Send connection success message
+                        // Send initial connection success message
                         ws.send(JSON.stringify({ 
                             type: 'connected', 
                             nodeId: nodeId,
                             userId: userId,
                             tenantId: tenantId,
-                            message: 'Canvas desktop endpoint connected (Phase 1 - Testing)',
-                            phase: 1,
-                            capabilities: ['ping', 'auth']
-                            // Phase 2 will add: ['screen', 'input', 'quality']
+                            message: 'Canvas desktop endpoint connected (Phase 2 - Screen Streaming)',
+                            phase: 2,
+                            capabilities: ['ping', 'auth', 'screen', 'input']
                         }));
                         
-                        console.log(`[CANVAS] Connection established for user ${userId} to node ${nodeId}`);
+                        console.log(`[CANVAS] Phase 2 - Initial handshake sent to dashboard`);
+                        
+                        // Phase 2: Connect to desktop multiplexor
+                        let deskMultiplexor = obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                        
+                        if (deskMultiplexor == null || deskMultiplexor == 1) {
+                            console.log('[CANVAS] Creating new desktop multiplexor for node:', nodeId);
+                            
+                            // Mark as pending creation
+                            obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = 1;
+                            
+                            // Create new multiplexor
+                            require('./meshdesktopmultiplex').CreateDesktopMultiplexor(
+                                obj.meshDesktopMultiplexHandler.parent,
+                                domain,
+                                nodeId,
+                                'canvas-' + Date.now(), // session id
+                                function (multiplexor) {
+                                    if (multiplexor != null) {
+                                        console.log('[CANVAS] Desktop multiplexor created successfully');
+                                        peer.deskMultiplexor = multiplexor;
+                                        obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId] = multiplexor;
+                                        
+                                        // Add ourselves as a viewer
+                                        multiplexor.addPeer(peer);
+                                        console.log('[CANVAS] Added as peer to desktop multiplexor');
+                                        
+                                        // Resume socket traffic
+                                        if (ws._socket && ws._socket.resume) {
+                                            ws._socket.resume();
+                                        }
+                                    } else {
+                                        console.error('[CANVAS] Failed to create desktop multiplexor');
+                                        delete obj.meshDesktopMultiplexHandler.parent.desktoprelays[nodeId];
+                                        ws.send(JSON.stringify({ type: 'error', message: 'Failed to establish desktop session' }));
+                                        ws.close();
+                                    }
+                                }
+                            );
+                        } else {
+                            console.log('[CANVAS] Using existing desktop multiplexor for node:', nodeId);
+                            peer.deskMultiplexor = deskMultiplexor;
+                            
+                            // Add ourselves as a viewer to existing multiplexor
+                            deskMultiplexor.addPeer(peer);
+                            console.log('[CANVAS] Added as peer to existing desktop multiplexor');
+                            
+                            // Resume socket traffic
+                            if (ws._socket && ws._socket.resume) {
+                                ws._socket.resume();
+                            }
+                        }
+                        
+                        console.log(`[CANVAS] Phase 2 - Complete setup for user ${userId} to node ${nodeId}`);
                     } // end handleAuthenticatedConnection
                 });
                 // End of Custom Canvas Desktop Endpoint
