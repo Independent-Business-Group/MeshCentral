@@ -181,7 +181,7 @@ module.exports.CreateJWTAuth = function (parent) {
                     created_at,
                     mfa_enabled
                 FROM users 
-                WHERE email = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+                WHERE email = $1 AND tenant_id = $2`,
                 [email, tenantId]
             );
             
@@ -255,7 +255,7 @@ module.exports.CreateJWTAuth = function (parent) {
                     created_at,
                     mfa_enabled
                 FROM users 
-                WHERE user_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+                WHERE user_id = $1 AND tenant_id = $2`,
                 [userId, tenantId]
             );
             
@@ -455,7 +455,7 @@ module.exports.CreateJWTAuth = function (parent) {
                     mfa_enabled,
                     password_hash
                 FROM users 
-                WHERE (email = $1 OR name = $1) AND deleted_at IS NULL`,
+                WHERE (email = $1 OR name = $1)`,
                 [username.toLowerCase()]
             );
             
@@ -527,7 +527,7 @@ module.exports.CreateJWTAuth = function (parent) {
      */
     obj.healthCheck = async function (callback) {
         try {
-            const result = await obj.pool.query('SELECT NOW() as time, COUNT(*) as user_count FROM users WHERE deleted_at IS NULL');
+            const result = await obj.pool.query('SELECT NOW() as time, COUNT(*) as user_count FROM users');
             callback({
                 status: 'healthy',
                 database: 'connected',

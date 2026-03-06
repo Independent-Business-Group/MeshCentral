@@ -1539,6 +1539,10 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     }
 
     function handleCreateAccountRequest(req, res, direct) {
+        // Account creation disabled - use dashboard integration
+        res.sendStatus(404);
+        return;
+        
         const domain = checkUserIpAddress(req, res);
         if (domain == null) { return; }
         if ((domain.auth == 'sspi') || (domain.auth == 'ldap')) { parent.debug('web', 'handleCreateAccountRequest: failed checks.'); res.sendStatus(404); return; }
@@ -6755,7 +6759,6 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             const publicPaths = [
                 '/', // Allow root page
                 '/login',
-                '/createaccount',
                 '/resetpassword',
                 '/resetaccount', 
                 '/checkemail',
