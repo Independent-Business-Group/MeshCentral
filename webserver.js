@@ -1539,12 +1539,17 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     }
 
     function handleCreateAccountRequest(req, res, direct) {
-        // Account creation disabled - use dashboard integration
-        res.sendStatus(404);
-        return;
-        
         const domain = checkUserIpAddress(req, res);
         if (domain == null) { return; }
+        
+        // Allow account creation only if no users exist (first user = site admin)
+        // After that, force dashboard integration
+        if (Object.keys(obj.users).length > 0) {
+            // Users already exist - redirect to dashboard for account creation
+            res.status(403).send('Account creation disabled. Please use the dashboard to create accounts.');
+            return;
+        }
+        
         if ((domain.auth == 'sspi') || (domain.auth == 'ldap')) { parent.debug('web', 'handleCreateAccountRequest: failed checks.'); res.sendStatus(404); return; }
         if ((domain.loginkey != null) && (domain.loginkey.indexOf(req.query.key) == -1)) { res.sendStatus(404); return; } // Check 3FA URL key
         if (req.session.loginToken != null) { res.sendStatus(404); return; } // Do not allow this command when logged in using a login token
@@ -6759,6 +6764,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             const publicPaths = [
                 '/', // Allow root page
                 '/login',
+                '/createaccount', // Allow for first admin account creation only
                 '/resetpassword',
                 '/resetaccount', 
                 '/checkemail',
