@@ -743,38 +743,69 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
             }
         } else {
             // Regular login
-            var user = obj.users['user/' + domain.id + '/' + name.toLowerCase()];
-            // Query the db for the given username
-            if (!user) { fn(new Error('cannot find user')); return; }
-            // Apply the same algorithm to the POSTed password, applying the hash against the pass / salt, if there is a match we found the user
-            if (user.salt == null) {
-                fn(new Error('invalid password'));
-            } else {
-                if (user.passtype != null) {
-                    // IIS default clear or weak password hashing (SHA-1)
-                    require('./pass').iishash(user.passtype, pass, user.salt, function (err, hash) {
-                        if (err) return fn(err);
-                        if (hash == user.hash) {
-                            // Update the password to the stronger format.
-                            require('./pass').hash(pass, function (err, salt, hash, tag) { if (err) throw err; user.salt = salt; user.hash = hash; delete user.passtype; obj.db.SetUser(user); }, 0);
-                            if ((user.siteadmin) && (user.siteadmin != 0xFFFFFFFF) && (user.siteadmin & 32) != 0) { fn('locked'); return; }
-                            return fn(null, user._id);
+            
+            // If JWT auth module is enabled, try PostgreSQL authentication first
+            if (obj.parent.jwtAuth && typeof obj.parent.jwtAuth.authenticatePassword === 'function') {
+                obj.parent.jwtAuth.authenticatePassword(name, pass, function (meshUser) {
+                    if (meshUser) {
+                        // PostgreSQL authentication successful
+                        console.log('[WebServer] PostgreSQL authentication successful for:', meshUser._id);
+                        
+                        // Store or update user in MeshCentral's user cache
+                        obj.users[meshUser._id] = meshUser;
+                        
+                        // Check if user is locked
+                        if ((meshUser.siteadmin) && (meshUser.siteadmin != 0xFFFFFFFF) && (meshUser.siteadmin & 32) != 0) { 
+                            fn('locked'); 
+                            return; 
                         }
-                        fn(new Error('invalid password'), null, user.passhint);
-                    });
+                        
+                        // Return successful authentication
+                        return fn(null, meshUser._id);
+                    } else {
+                        // PostgreSQL authentication failed, try MeshCentral local users
+                        tryLocalAuthentication();
+                    }
+                });
+                return;
+            }
+            
+            // No JWT auth or it's not available, try local authentication
+            tryLocalAuthentication();
+            
+            function tryLocalAuthentication() {
+                var user = obj.users['user/' + domain.id + '/' + name.toLowerCase()];
+                // Query the db for the given username
+                if (!user) { fn(new Error('cannot find user')); return; }
+                // Apply the same algorithm to the POSTed password, applying the hash against the pass / salt, if there is a match we found the user
+                if (user.salt == null) {
+                    fn(new Error('invalid password'));
                 } else {
-                    // Default strong password hashing (pbkdf2 SHA384)
-                    require('./pass').hash(pass, user.salt, function (err, hash, tag) {
-                        if (err) return fn(err);
-                        if (hash == user.hash) {
-                            if ((user.siteadmin) && (user.siteadmin != 0xFFFFFFFF) && (user.siteadmin & 32) != 0) { fn('locked'); return; }
-                            return fn(null, user._id);
-                        }
-                        fn(new Error('invalid password'), null, user.passhint);
-                    }, 0);
+                    if (user.passtype != null) {
+                        // IIS default clear or weak password hashing (SHA-1)
+                        require('./pass').iishash(user.passtype, pass, user.salt, function (err, hash) {
+                            if (err) return fn(err);
+                            if (hash == user.hash) {
+                                // Update the password to the stronger format.
+                                require('./pass').hash(pass, function (err, salt, hash, tag) { if (err) throw err; user.salt = salt; user.hash = hash; delete user.passtype; obj.db.SetUser(user); }, 0);
+                                if ((user.siteadmin) && (user.siteadmin != 0xFFFFFFFF) && (user.siteadmin & 32) != 0) { fn('locked'); return; }
+                                return fn(null, user._id);
+                            }
+                            fn(new Error('invalid password'), null, user.passhint);
+                        });
+                    } else {
+                        // Default strong password hashing (pbkdf2 SHA384)
+                        require('./pass').hash(pass, user.salt, function (err, hash, tag) {
+                            if (err) return fn(err);
+                            if (hash == user.hash) {
+                                if ((user.siteadmin) && (user.siteadmin != 0xFFFFFFFF) && (user.siteadmin & 32) != 0) { fn('locked'); return; }
+                                return fn(null, user._id);
+                            }
+                            fn(new Error('invalid password'), null, user.passhint);
+                        }, 0);
+                    }
                 }
             }
-        }
     };
 
     /*

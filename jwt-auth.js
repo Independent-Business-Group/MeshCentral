@@ -436,6 +436,93 @@ module.exports.CreateJWTAuth = function (parent) {
     };
     
     /**
+     * Authenticate user with username/password against PostgreSQL
+     * Returns MeshCentral user object if successful, null otherwise
+     */
+    obj.authenticatePassword = async function (username, password, callback) {
+        try {
+            console.log('[JWT Auth] Password authentication attempt for:', username);
+            
+            // Query user by email or username
+            const result = await obj.pool.query(
+                `SELECT 
+                    user_id, 
+                    email, 
+                    name, 
+                    role, 
+                    tenant_id,
+                    created_at,
+                    mfa_enabled,
+                    password_hash
+                FROM users 
+                WHERE (email = $1 OR name = $1) AND deleted_at IS NULL`,
+                [username.toLowerCase()]
+            );
+            
+            if (result.rows.length === 0) {
+                console.log('[JWT Auth] User not found:', username);
+                return callback(null);
+            }
+            
+            const pgUser = result.rows[0];
+            
+            if (!pgUser.password_hash) {
+                console.log('[JWT Auth] User has no password hash (OAuth-only user?)');
+                return callback(null);
+            }
+            
+            // Verify password using bcrypt
+            const bcrypt = require('bcrypt');
+            const passwordMatch = await bcrypt.compare(password, pgUser.password_hash);
+            
+            if (!passwordMatch) {
+                console.log('[JWT Auth] Password verification failed for:', username);
+                return callback(null);
+            }
+            
+            console.log('[JWT Auth] Password verified successfully for:', username);
+            
+            // Determine site admin privileges
+            let siteadmin = 0;
+            if (pgUser.role === 'admin') {
+                // Check if root tenant
+                if (pgUser.tenant_id === '1' || pgUser.tenant_id === '00000000-0000-0000-0000-000000000001') {
+                    siteadmin = 0xFFFFFFFF; // Full admin
+                } else {
+                    siteadmin = 0x00000006; // Manage users + server update
+                }
+            }
+            
+            // Map PostgreSQL user to MeshCentral user format
+            const meshUser = {
+                _id: `user//${pgUser.email}`,
+                email: pgUser.email,
+                name: pgUser.name || pgUser.email.split('@')[0],
+                domain: "",
+                siteadmin: siteadmin,
+                emailVerified: true,
+                creation: Math.floor(new Date(pgUser.created_at).getTime() / 1000),
+                links: {},
+                _external: true,
+                _postgres_user_id: pgUser.user_id,
+                _tenant_id: pgUser.tenant_id
+            };
+            
+            console.log(`[JWT Auth] User authenticated: ${meshUser._id}, siteadmin=${siteadmin}`);
+            
+            // Fetch device links for this user's tenant
+            obj.getUserDeviceLinks(pgUser.user_id, pgUser.tenant_id, (links) => {
+                meshUser.links = links;
+                callback(meshUser);
+            });
+            
+        } catch (err) {
+            console.error('❌ JWT Auth: Password authentication error:', err.message);
+            callback(null);
+        }
+    };
+    
+    /**
      * Health check
      */
     obj.healthCheck = async function (callback) {
