@@ -806,6 +806,7 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                     }
                 }
             }
+        }
     };
 
     /*
