@@ -6719,9 +6719,14 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
 
         // JWT Authentication Middleware (RMM+PSA Integration)
         obj.app.use(function (req, res, next) {
-            // Skip JWT auth for health/readiness probes and public routes
+            // Skip JWT auth for health/readiness probes, public routes, and static assets
             const publicPaths = [
+                '/', // Allow root page
                 '/login',
+                '/createaccount',
+                '/resetpassword',
+                '/resetaccount', 
+                '/checkemail',
                 '/health',
                 '/healthz', 
                 '/health.ashx',
@@ -6732,9 +6737,14 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                 '/liveness'
             ];
             
-            // Check if path matches any public path or starts with /.well-known/
+            // Check if path matches any public path, starts with /.well-known/, or is a static asset
             if (publicPaths.includes(req.path) || 
-                req.path.startsWith('/.well-known/') || 
+                req.path.startsWith('/.well-known/') ||
+                req.path.startsWith('/styles/') ||
+                req.path.startsWith('/scripts/') ||
+                req.path.startsWith('/images/') ||
+                req.path.startsWith('/public/') ||
+                req.path.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/i) ||
                 req.ws) {
                 return next();
             }
