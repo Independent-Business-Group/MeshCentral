@@ -3429,13 +3429,8 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
     function handleRootRequestLogin(req, res, domain, hardwareKeyChallenge, passRequirements) {
         parent.debug('web', 'handleRootRequestLogin()');
         
-        // JWT-only mode: If JWT authentication is enabled, deny access to login page
-        // Users must authenticate via JWT token from the dashboard
-        if (obj.parent.jwtAuth) {
-            console.log('[JWT Auth] Login page access denied - JWT authentication required');
-            res.status(503).send('<!DOCTYPE html><html><head><title>Service Unavailable</title><style>body{font-family:Arial,sans-serif;text-align:center;padding:50px;background:#f5f5f5}h1{color:#333}p{color:#666}</style></head><body><h1>Service Unavailable</h1><p>This service requires authentication through the main dashboard.</p><p>Please access this system via the RMM dashboard.</p></body></html>');
-            return;
-        }
+        // JWT authentication is handled by middleware - allow login page to render
+        // The page will be accessible but actual authentication requires JWT
         
         var features = 0;
         if ((parent.config != null) && (parent.config.settings != null) && ((parent.config.settings.allowframing == true) || (typeof parent.config.settings.allowframing == 'string'))) { features += 32; } // Allow site within iframe
