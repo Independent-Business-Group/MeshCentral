@@ -6724,8 +6724,23 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
 
         // JWT Authentication Middleware (RMM+PSA Integration)
         obj.app.use(function (req, res, next) {
-            // Skip JWT auth for specific public routes and websockets
-            if (req.path === '/login' || req.path === '/health' || req.ws) {
+            // Skip JWT auth for health/readiness probes and public routes
+            const publicPaths = [
+                '/login',
+                '/health',
+                '/healthz', 
+                '/health.ashx',
+                '/ping',
+                '/api/ping',
+                '/status',
+                '/readiness',
+                '/liveness'
+            ];
+            
+            // Check if path matches any public path or starts with /.well-known/
+            if (publicPaths.includes(req.path) || 
+                req.path.startsWith('/.well-known/') || 
+                req.ws) {
                 return next();
             }
             
