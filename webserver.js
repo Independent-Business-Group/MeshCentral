@@ -1542,11 +1542,20 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
         const domain = checkUserIpAddress(req, res);
         if (domain == null) { return; }
         
-        // Allow account creation only if no users exist (first user = site admin)
-        // After that, force dashboard integration
-        if (Object.keys(obj.users).length > 0) {
+        // Allow account creation only if no NATIVE users exist (first user = site admin)
+        // Count native MeshCentral users only (exclude _external PostgreSQL users)
+        let nativeUserCount = 0;
+        for (const userId in obj.users) {
+            if (!obj.users[userId]._external && obj.users[userId].domain === domain.id) {
+                nativeUserCount++;
+            }
+        }
+        
+        if (nativeUserCount > 0) {
             // Users already exist - redirect to dashboard for account creation
-            res.status(403).send('Account creation disabled. Please use the dashboard to create accounts.');
+            req.session.loginmode = 2;
+            req.session.messageid = 100; // Unable to create account
+            if (direct === true) { handleRootRequestEx(req, res, domain); } else { res.redirect(domain.url + getQueryPortion(req)); }
             return;
         }
         
