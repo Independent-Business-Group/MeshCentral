@@ -25,9 +25,11 @@ module.exports.CreateJWTAuth = function (parent) {
     obj.agentSignKey = process.env.AGENT_SIGN_KEY;
     
     // PostgreSQL connection pool
+    // NOTE: jwt-auth connects to user database (defaultdb), NOT MeshCentral's device database
+    // Use DB_NAME first (for users), fallback to POSTGRES_DB only if DB_NAME not set
     const dbHost = process.env.POSTGRES_HOST || process.env.DB_HOST;
     const dbPort = parseInt(process.env.POSTGRES_PORT || process.env.DB_PORT || '25060');
-    const dbName = process.env.POSTGRES_DB || process.env.DB_NAME || 'defaultdb';
+    const dbName = process.env.DB_NAME || process.env.POSTGRES_DB || 'defaultdb';
     const dbUser = process.env.POSTGRES_USER || process.env.DB_USER || 'doadmin';
     const dbPassword = process.env.POSTGRES_PASSWORD || process.env.DB_PASSWORD;
     
