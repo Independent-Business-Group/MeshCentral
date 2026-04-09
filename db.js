@@ -960,11 +960,20 @@ module.exports.CreateDB = function (parent, func) {
                 if (res.rowCount != 0) { // database exists now check tables exists
                     DatastoreTest.end();
                     Datastore.connect();
+                    console.log('🔍 Checking for DatabaseIdentifier...');
                     Datastore.query('SELECT doc FROM main WHERE id = $1', ['DatabaseIdentifier'], function (err, res) {
                         if (err == null) {
-                        (res.rowCount ==0) ? postgreSqlCreateTables(func) : setupFunctions(func)
+                            if (res.rowCount == 0) {
+                                console.log('❌ DatabaseIdentifier NOT found - creating new tables');
+                                postgreSqlCreateTables(func);
+                            } else {
+                                console.log('✅ DatabaseIdentifier found - loading existing data');
+                                console.log(`   Found ${res.rowCount} DatabaseIdentifier record(s)`);
+                                setupFunctions(func);
+                            }
                         } else
                         if (err.code == '42P01') { //42P01 = undefined table, https://www.postgresql.org/docs/current/errcodes-appendix.html
+                            console.log('❌ Table "main" does not exist - creating tables');
                             postgreSqlCreateTables(func);
                         } else {
                             console.log('Postgresql database exists, other error: ', err.message); process.exit(0);
