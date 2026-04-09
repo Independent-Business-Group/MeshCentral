@@ -920,10 +920,17 @@ module.exports.CreateDB = function (parent, func) {
             });
             setTimeout(function () { tempDatastore.end(); }, 2000);
         }
-    } else if (parent.args.postgres) {
-        // Postgres SQL
-        let connectionArgs = parent.args.postgres;
+    } else if (parent.args.postgres || parent.config.settings.postgres) {
+        // Postgres SQL - support both CLI args and config.json settings
+        let connectionArgs = parent.args.postgres || parent.config.settings.postgres;
         connectionArgs.database = (databaseName = (connectionArgs.database != null) ? connectionArgs.database : 'meshcentral');
+        
+        // Log PostgreSQL connection info for debugging
+        console.log('✅ PostgreSQL backend enabled');
+        console.log('   Host:', connectionArgs.host);
+        console.log('   Port:', connectionArgs.port);
+        console.log('   Database:', connectionArgs.database);
+        console.log('   User:', connectionArgs.user);
 
         let DatastoreTest;
         obj.databaseType = DB_POSTGRESQL;
