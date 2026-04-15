@@ -72,10 +72,10 @@ module.exports.pluginHandler = function (parent) {
         str += '    var obj = {};\r\n';
 
         for (var p of Object.keys(obj.plugins)) {
-            str += '    obj.' + p + ' = {};\r\n';
+            str += '    obj["' + p + '"] = {};\r\n';
             if (Array.isArray(obj.exports[p])) {
                 for (var l of Object.values(obj.exports[p])) {
-                    str += '        obj.' + p + '.' + l + ' = ' + obj.plugins[p][l].toString() + '\r\n';
+                    str += '        obj["' + p + '"]["' + l + '"] = ' + obj.plugins[p][l].toString() + '\r\n';
                 }
             }
         }
