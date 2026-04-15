@@ -7362,8 +7362,16 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             try {
                                 // Handle binary data (input events to agent)
                                 if (Buffer.isBuffer(msg)) {
-                                    if (peer.deskMultiplexor && peer.deskMultiplexor.processData) {
+                                    console.log(`[CANVAS] Received binary message, length: ${msg.length}`);
+                                    if (msg.length >= 4) {
+                                        const command = msg.readUInt16BE(0);
+                                        const size = msg.readUInt16BE(2);
+                                        console.log(`[CANVAS] Binary command: ${command}, size: ${size}`);
+                                    }
+                                   if (peer.deskMultiplexor && peer.deskMultiplexor.processData) {
                                         peer.deskMultiplexor.processData(peer, msg);
+                                    } else {
+                                        console.error('[CANVAS] No desktop multiplexor available to process data!');
                                     }
                                     return;
                                 }
@@ -7401,23 +7409,28 @@ module.exports.CreateWebServer = function (parent, db, args, certificates, doneF
                             }
                         });
                         
-                        ws.on('close', function() {
+                        ws.on('close', function(code, reason) {
                             parent.debug('web', `[CANVAS] Connection closed for node: ${nodeId}`);
-                            console.log(`[CANVAS] Phase 2 - Connection closed for node: ${nodeId}`);
+                            console.log(`[CANVAS] Phase 2 - Connection closed for node: ${nodeId}, code: ${code}, reason: ${reason || 'none'}`);
                             
                             // Phase 2: Remove from desktop multiplexor
                             if (peer.deskMultiplexor && peer.deskMultiplexor.removePeer) {
                                 console.log('[CANVAS] Removing peer from desktop multiplexor');
-                                if (peer.deskMultiplexor.removePeer(peer)) {
-                                    // Last peer removed, cleanup multiplexor reference
-                                    delete obj.desktoprelays[nodeId];
-                                    console.log('[CANVAS] Desktop multiplexor cleaned up');
+                                try {
+                                    if (peer.deskMultiplexor.removePeer(peer)) {
+                                        // Last peer removed, cleanup multiplexor reference
+                                        delete obj.desktoprelays[nodeId];
+                                        console.log('[CANVAS] Desktop multiplexor cleaned up');
+                                    }
+                                } catch (err) {
+                                    console.error('[CANVAS] Error removing peer:', err.message);
                                 }
                             }
                         });
                         
                         ws.on('error', function(err) {
                             console.error('[CANVAS] WebSocket error:', err.message);
+                            console.error('[CANVAS] Error stack:', err.stack);
                         });
                         
                         // Send initial connection success message  with error handling
