@@ -47,6 +47,11 @@ module.exports.CreateJWTAuth = function (parent) {
         throw new Error('Missing database configuration');
     }
     
+    // Create database connection pool
+    // NOTE: Pool size optimized for shared database with backend (25 total connection limit)
+    // - Backend uses 15 connections max
+    // - MeshCentral uses 3 connections max
+    // - Total: 18 connections (safe operating range with headroom for superuser/monitoring)
     obj.pool = new Pool({
         host: dbHost,
         port: dbPort,
@@ -55,8 +60,10 @@ module.exports.CreateJWTAuth = function (parent) {
         password: dbPassword,
         ssl: { rejectUnauthorized: false },
         connectionTimeoutMillis: 5000,
-        idleTimeoutMillis: 30000,
-        max: 10
+        idleTimeoutMillis: 10000, // Reduced from 30s - faster idle connection cleanup
+        max: 3, // Reduced from 10 - sufficient for JWT validation and user lookups
+        min: 1, // Keep 1 connection warm for fast response
+        acquireTimeoutMillis: 5000 // Fail fast if pool exhausted
     });
     
     // User cache to reduce database queries (5 minute TTL)
